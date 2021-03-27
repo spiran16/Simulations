@@ -1,6 +1,6 @@
 # Simulations
 
-### This repo contains Monte Carlo simulation study designs and simple code I have completed for research projects:  
+### This repo contains Monte Carlo simulation study code ongoing and past research projects:  
 
 
 

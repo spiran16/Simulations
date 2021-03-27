@@ -4,11 +4,12 @@ This repo contains Monte Carlo simulation study designs and simple code I have c
 \
 \
 Multilevel Modeling Bias Correction Thesis Project Files 
-1. Data generate formula for mutiple multivariate multilevel data 
-2. Code to compute sample between and sample within group estimates
+Data generate formula for mutiple multivariate multilevel data 
+Code to compute sample between and sample within group estimates
 \
-Dynamic Factor Analysis Project Files
-1. Data generation
-2. 
+Evaluating Model fit of Bifactor Models and Correlated-traits Model in Random Positive- Definite Covariance Matrices
+1. Bifactor-PDM Project
+2.  Contains annoted R code for the project.
+3. 
 
  

@@ -1,0 +1,187 @@
+---
+title: "Demonstrate Bias Correction"
+author: "Saifa Pirani"
+date: "10/9/2020"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(lme4)
+library(matlib)
+library(mvtnorm)
+library(stats)
+library(MASS)
+library(misty)
+```
+
+
+
+
+# Multilvel Data (Within and Between Compositional Variable) Simulation Code
+
+```{r}
+sim <- function(ng, no, varb1, varw1,
+                varb2, varw2, rb, rw){
+  
+  #Create data frame
+  frame <- data.frame(  
+    ind = sort(rep((c(1:ng)), no)),
+    time = rep(c(1:no), ng),
+    x1 = rep(0,c(1:no), ng), # raw ((between+e) within)
+    x2 = rep(0,c(1:no), ng),
+    tb1 = rep(0,c(1:no), ng), # True between score
+    tb2 = rep(0,c(1:no), ng),
+    tw1 = rep(0,c(1:no), ng), # True within score
+    tw2 = rep(0,c(1:no), ng))
+  
+  N <- ng*no # Full sample
+  
+  # Generate Correlated Random observations from Multivariate distribution between and within for x1 and x2
+  cb <- rb*sqrt(varb1)*sqrt(varb2)
+  cw <- rw*sqrt(varw1)*sqrt(varw2)
+  tempB <- mvrnorm(ng, mu = c(0,0), Sigma = matrix(c(varb1, cb, cb, varb2), nrow = 2)) # Draw means from multi
+  tempW <- mvrnorm(N, mu = c(0,0), Sigma = matrix(c(varw1, cw, cw, varw2), nrow = 2)) 
+
+  
+  ###############################
+  # Create your x varaibles
+  frame$tb1 <- rep(tempB[1:ng,1], each = no)
+  frame$tb2 <- rep(tempB[1:ng,2], each = no)
+  frame$tw1 <- tempW[,1]
+  frame$tw2 <- tempW[,2]
+
+  
+  #First, calculate x1 observations by adding (between +se) + within from multivariate
+  frame$x1 <- tempW[,1] + frame$tb1
+  # Compute x2
+  frame$x2 <- tempW[,2] + frame$tb2
+  # Error Check
+  #stopifnot(all.equal((frame$tb1+frame$tw1+frame$se1), frame$x1))
+  ###########################################
+  # Generate means and mean centered var for x1 in data frame
+  frame$gmc1 <- center(frame$x1, "CWC", group = frame$ind) # group mean center
+  tempgmean1 <- aggregate(frame$x1, list (frame$ind), mean) #Group means
+  #Centered group means
+  frame$gmean1 <- unlist(rep(tempgmean1$x[1:ng], each = no)) - mean(tempgmean1$x)
+ 
+  
+  # Generate means and mean centered var for x2 in data frame
+  frame$gmc2 <- center(frame$x2, "CWC", group = frame$ind) # group mean center
+  tempgmean2 <- aggregate(frame$x2, list (frame$ind), mean) #Group means
+  #Centered group means
+  frame$gmean2 <- unlist(rep(tempgmean2$x[1:ng], each = no)) - mean(tempgmean2$x)
+  
+  #################################
+  
+  return (frame) # Give me the data
+}
+
+```
+
+# Multilevel Model Full Data Set with Y Simulation Code:
+
+
+```{r}
+set.seed(7)
+ng = 10000
+no = 5
+N = ng*no
+
+
+dataCorr <- sim(ng = ng, # indviduals
+                no = no, #Time points
+                varb1 = .3, #Variance between x1
+                varw1 = 1,# variance within x1
+                varb2 = .5,# variance between x2
+                varw2 = 1.2,# variance within x2
+                rb = 0.3, # corr between variables
+                rw = 0.2) # corr within variables
+attach(dataCorr)
+
+set.seed(7)
+dataCorr$r_ij <- rnorm(N, 0,2) # indvidual error 100,000
+u <- rnorm(ng, 0, 1)
+dataCorr$u_j <- rep(u, each = no) # Repeat error for each group
+
+# set up errors
+dataCorr$se1 <- gmean1-tb1
+dataCorr$se2 <- gmean2-tb2
+dataCorr$delta1 <- tw1
+dataCorr$delta2 <- tw2
+
+
+# Generate y data set 
+dataCorr$yt <- 10 +  2*tw1 + 5*tw2  + #group mean centered (w) 
+                    1*tb1 + 3*tb2 + # group mean(b)
+                    dataCorr$r_ij + dataCorr$u_j # error
+
+head(dataCorr)
+ 
+```
+
+
+# Fit Unconditional and Conditional Multilevel Contextual Model
+
+```{r}
+# Model the data set y 
+
+# Fit unconditional model
+unmodel <- lmer(yt ~ 1 + (1|ind), dataCorr)
+summary(unmodel)
+
+# Fit full model -- Random Intercept Model
+
+model <- lmer(yt ~ 1 + gmc1 + gmc2 + gmean1 + gmean2 + (1 | ind), dataCorr)
+summary(model)
+
+```
+
+# Bias correction using true values:
+
+```{r}
+
+coeff <- as.matrix(getME(model, "fixef")[4:5])
+coeff <- t(coeff)
+# Cov of xbar
+xbar <-  matrix(c(var(gmean1), cov(gmean1, gmean2), cov(gmean1,gmean2), var(gmean2)), 2, 2)
+# Covariance matrix of x and tau
+xbartb <- matrix(c(cov(gmean1,tb1), cov(gmean1,tb2), cov(gmean2,tb1), cov(gmean2,tb2)), 2,2)
+# Cov of y and error
+sey <- matrix(c(cov(dataCorr$se1,dataCorr$yt), cov(dataCorr$se2,dataCorr$yt)), 1,2)
+# Bias Correction Formula
+
+B <- ((coeff %*% xbar) - sey) %*% inv(xbartb)
+
+PopcorrTable <- round(matrix (c(coeff[1], coeff[2],
+                          .5, .6,
+                          B[1], B[2]), 2, 3), 4)
+colnames(PopcorrTable) <- (c("Obs", "True", "Corrected"))
+PopcorrTable
+
+```
+# Bias correction using sample values:
+
+```{r}
+#Sample covaraiance of X between
+sxb <- matrix(c(var(gmean1), cov(gmean1, gmean2), cov(gmean1,gmean2), var(gmean2)), 2, 2)
+#Sample cov of xwithin and y
+syxw <- matrix(c(cov(dataCorr$gmc1,dataCorr$yt), cov(dataCorr$gmc2,dataCorr$yt)), 1,2)
+#sample cov of x within
+sxw <- matrix(c(var(gmc1), cov(gmc1,gmc2), cov(gmc1, gmc2), var(gmc2)), 2, 2)
+
+B_samp <- ((coeff %*% sxb) - (1/no)*((1-(1/no))^-1)*syxw) %*% inv(sxb - (1/no)*((1-(1/no))^-1)*sxw)
+
+SampcorrTable <- round(matrix (c(coeff[1], coeff[2],
+                          .5, .6,
+                          B_samp[1], B_samp[2]), 2, 3), 2)
+colnames(SampcorrTable) <- (c("Obs", "True", "Corrected"))
+SampcorrTable
+
+
+
+
+
+```

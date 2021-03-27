@@ -11,6 +11,6 @@
 
 #### Project 2 - Evaluating Model fit of Bifactor Models and Correlated-traits Model in Random Positive- Definite Covariance Matrices \
 ##### Project completed for forum and poster presentation
-Bifactor-PDM Project.R - Contains annoted R code for Bifactor Project
+     Bifactor-PDM Project.R - Contains annoted R code for Bifactor Project
 
  
